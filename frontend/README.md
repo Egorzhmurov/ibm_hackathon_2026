@@ -1,16 +1,67 @@
-# React + Vite
+# IBM Bob 2.0 Hackathon Project
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Team Overview
+We are a team from Ukraine. We joined the IBM Bob 2.0 Hackathon to challenge ourselves, gain new knowledge in frontend and web development, and explore how AI can optimize modern developer workflows. Our primary goal for this hackathon is to build a highly functional, user-centric application while getting hands-on experience with IBM Bob IDE's advanced capabilities.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+# AI Debug: CI/CD Pipeline Analyzer
 
-## React Compiler
+A Warp-inspired AI debugging utility designed to automatically diagnose and fix failing CI/CD pipelines. The tool parses raw error logs, fetches the failing code directly from GitHub, and uses Google Gemini 3.8 Flash to generate a structured root cause analysis along with a ready-to-use code fix.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Tech Stack
+* **Frontend:** React (Vite), Tailwind CSS
+* **Backend:** Node.js, Express
+* **AI Engine:** Google Gemini 3.8 Flash (@google/generative-ai)
+* **Integrations:** GitHub REST API
 
-## Expanding the ESLint configuration
+## Prerequisites
+* [Node.js](https://nodejs.org/) (v18+)
+* A [Google Gemini API Key](https://aistudio.google.com/)
+* A GitHub Personal Access Token (PAT) for analyzing private repositories (optional)
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Local Setup
+
+### 1. Backend Configuration
+Navigate to the backend directory and install the required dependencies:
+```bash
+cd backend
+npm install
+```
+
+Set up your environment variables by copying the example file:
+```bash
+cp .env.example .env
+```
+
+Open the newly created `.env` file and insert your actual Gemini API key:
+`GEMINI_API_KEY=your_actual_key_here`
+
+Start the Express server:
+```bash
+node index.js
+```
+The server will start on `http://localhost:5000`.
+
+### 2. Frontend Configuration
+Open a new terminal window, navigate to the frontend directory, and install dependencies:
+```bash
+cd frontend
+npm install
+```
+
+Start the Vite development server:
+```bash
+npm run dev
+```
+The application will be available at `http://localhost:5173`.
+
+## Usage Workflow
+1. Open the web interface at `http://localhost:5173`.
+2. Enter the target GitHub repository (e.g., `owner/repo`).
+3. (Optional) Provide a GitHub token if the repository is private.
+4. Paste the raw CI/CD error log into the command-palette input.
+5. Click **Debug with AI** to instantly view the error location, root cause, and the suggested code fix.
+
+## Author
+* **Yegor Zhmurov**
