@@ -12,55 +12,45 @@ app.use(express.json());
 app.get('/', (req, res) => res.json({ message: 'Backend is running!' }));
 
 app.post('/api/debug', async (req, res) => {
-  const { log, repo, token } = req.body;
+  const { errorLog, repository, githubToken } = req.body;
 
-  if (!log || !repo) {
-    return res.status(400).json({ error: '`log` and `repo` are required.' });
+  if (!errorLog || !errorLog.trim()) {
+    return res.status(400).json({ error: 'Error log is required.' });
   }
 
-  // Extract a file path from the first stack-trace line, e.g. "at foo (src/bar.js:12:5)"
-  const stackMatch = log.match(/\(([^)]+\.(?:js|ts|jsx|tsx|py|rb|java|go)):\d+:\d+\)/);
+  const stackMatch = errorLog.match(/\(([^)]+\.(?:js|ts|jsx|tsx|py|rb|java|go)):\d+:\d+\)/);
   const filePath = stackMatch ? stackMatch[1] : null;
 
-  if (!filePath) {
-    return res.status(422).json({ error: 'Could not extract a file path from the log.' });
-  }
+  let rawCode = null;
 
-  const headers = {
-    'Accept': 'application/vnd.github.v3.raw',
-    'User-Agent': 'Node.js',
-  };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
+  if (repository && filePath) {
+    const headers = {
+      'Accept': 'application/vnd.github.v3.raw',
+      'User-Agent': 'Node.js',
+    };
+    if (githubToken) headers['Authorization'] = `Bearer ${githubToken}`;
 
-  const githubUrl = `https://api.github.com/repos/${repo}/contents/${filePath}`;
-
-  let rawCode;
-  try {
-    const ghRes = await fetch(githubUrl, { headers });
-    if (!ghRes.ok) {
-      return res.status(ghRes.status).json({
-        error: `GitHub API returned ${ghRes.status} for ${filePath}`,
-      });
+    try {
+      const ghRes = await fetch(
+        `https://api.github.com/repos/${repository}/contents/${filePath}`,
+        { headers }
+      );
+      if (ghRes.ok) rawCode = await ghRes.text();
+    } catch {
+      // proceed without source context
     }
-    rawCode = await ghRes.text();
-  } catch (err) {
-    return res.status(502).json({ error: `Failed to reach GitHub API: ${err.message}` });
   }
+
+  const sourceBlock = rawCode
+    ? `\n\nThe relevant source file is \`${filePath}\`:\n\`\`\`\n${rawCode}\n\`\`\``
+    : '';
 
   const prompt = `You are an expert debugger. A CI/CD pipeline produced the following error log:
 
 \`\`\`
-${log}
+${errorLog}
 \`\`\`
-
-The relevant source file is \`${filePath}\`:
-
-\`\`\`
-${rawCode}
-\`\`\`
-
+${sourceBlock}
 Respond with ONLY a raw JSON object — no markdown fences, no extra text — matching this exact shape:
 {"cause":"<concise string explaining the root error>","fix":"<formatted code block resolving it>"}`;
 

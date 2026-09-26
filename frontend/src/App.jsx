@@ -1,202 +1,179 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
-const PLACEHOLDER_RESULT = {
-  filePath: 'src/server/routes/auth.js:47',
-  rootCause:
-    'JWT verification is called before the token is extracted from the Authorization header, causing `token` to always be `undefined` and throwing a synchronous error that bypasses the async error handler.',
-  fix: `// Before
-router.post('/verify', (req, res) => {
-  const verified = jwt.verify(token, process.env.JWT_SECRET);
-  const token = req.headers.authorization?.split(' ')[1];
-  res.json({ verified });
-});
+const API = 'http://localhost:5000'
 
-// After
-router.post('/verify', (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'No token provided' });
-  const verified = jwt.verify(token, process.env.JWT_SECRET);
-  res.json({ verified });
-});`,
+function fmt_date(iso) {
+  return new Date(iso).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
+
+function fmt_time(minutes) {
+  if (!minutes) return '—'
+  const h = minutes / 60
+  return h >= 1 ? `${h.toFixed(1)} h` : `${minutes} min`
 }
 
 export default function App() {
-  const [log, setLog] = useState('')
-  const [repo, setRepo] = useState('')
-  const [githubToken, setGithubToken] = useState('')
-  const [result, setResult] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [repo, setRepo]               = useState('')
+  const [errorLog, setErrorLog]       = useState('')
+  const [loading, setLoading]         = useState(false)
+  const [result, setResult]           = useState(null)
+  const [error, setError]             = useState(null)
+  const [history, setHistory]         = useState([])
+  const [historyReady, setHistoryReady] = useState(false)
 
-  async function handleSubmit(e) {
+  useEffect(() => {
+    fetch(`${API}/api/logs`)
+      .then(r => r.json())
+      .then(d => setHistory(Array.isArray(d) ? d : []))
+      .catch(() => {})
+      .finally(() => setHistoryReady(true))
+  }, [])
+
+  const totalMinutes = history.reduce((s, l) => s + (l.timeSavedMinutes || 0), 0)
+
+  async function submit(e) {
     e.preventDefault()
-    if (!log.trim()) return
+    if (!errorLog.trim()) return
     setLoading(true)
     setResult(null)
+    setError(null)
     try {
-      const body = { log }
-      if (repo.trim()) body.repository = repo.trim()
-      if (githubToken.trim()) body.githubToken = githubToken.trim()
-      const res = await fetch('/api/debug', {
+      const res  = await fetch(`${API}/api/debug`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ repository: repo.trim(), errorLog }),
       })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
       setResult(data)
-    } catch {
-      setResult(PLACEHOLDER_RESULT)
+      setHistory(prev => [{
+        _id: Date.now(),
+        repository: repo.trim() || '—',
+        rootCause: data.rootCause ?? data.cause ?? '',
+        timeSavedMinutes: 0,
+        createdAt: new Date().toISOString(),
+      }, ...prev])
+    } catch (err) {
+      setError(
+        err instanceof TypeError
+          ? 'Network Error: Cannot connect to backend. Please ensure the Node.js server is running on port 5000.'
+          : err.message
+      )
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-[#0d0d0f] text-gray-100 flex flex-col items-center justify-start px-4 py-16 font-mono">
-      {/* Header */}
-      <div className="w-full max-w-2xl mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-white">
-          AI Debug
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Paste a raw error log and get a targeted fix.
-        </p>
-      </div>
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
 
-      {/* Input panel */}
-      <form onSubmit={handleSubmit} className="w-full max-w-2xl space-y-3">
-        {/* Repository URL */}
-        <div className="rounded-xl border border-white/10 bg-[#17171a] shadow-xl ring-1 ring-white/5 px-5 py-3 flex flex-col gap-1">
-          <label className="text-[11px] uppercase tracking-widest text-gray-500">
-            Repository URL
-          </label>
+      <header className="bg-gradient-to-r from-cyan-400 to-purple-500 px-8 py-8 text-center">
+        <h1 className="text-3xl font-bold tracking-tight text-white">AI Debug CI/CD</h1>
+        <p className="mt-1 text-sm text-white/70">Paste an error log. Get a targeted fix.</p>
+      </header>
+
+      <main className="max-w-3xl mx-auto px-6 py-10 space-y-8">
+
+        <section className="grid grid-cols-2 gap-4">
+          {[
+            { label: 'Errors Analyzed', value: historyReady ? history.length : '—' },
+            { label: 'Time Saved',      value: historyReady ? fmt_time(totalMinutes) : '—' },
+          ].map(({ label, value }) => (
+            <div key={label} className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+              <p className="text-xs uppercase tracking-widest text-slate-400 mb-1">{label}</p>
+              <p className="text-3xl font-bold bg-gradient-to-r from-cyan-500 to-purple-500 bg-clip-text text-transparent">
+                {value}
+              </p>
+            </div>
+          ))}
+        </section>
+
+        <form onSubmit={submit} className="space-y-3">
           <input
-            type="url"
-            className="bg-transparent text-sm text-gray-200 placeholder-gray-600 outline-none focus:ring-0 w-full"
-            placeholder="https://github.com/owner/repo"
+            type="text"
+            className="w-full bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm placeholder-slate-400 outline-none focus:border-cyan-400 transition-colors"
+            placeholder="Repository (optional) — owner/repo"
             value={repo}
-            onChange={(e) => setRepo(e.target.value)}
+            onChange={e => setRepo(e.target.value)}
           />
-        </div>
-
-        {/* GitHub Token */}
-        <div className="rounded-xl border border-white/10 bg-[#17171a] shadow-xl ring-1 ring-white/5 px-5 py-3 flex flex-col gap-1">
-          <label className="text-[11px] uppercase tracking-widest text-gray-500">
-            GitHub Token{' '}
-            <span className="normal-case tracking-normal text-gray-600">
-              (optional, for private repos)
-            </span>
-          </label>
-          <input
-            type="password"
-            autoComplete="off"
-            className="bg-transparent text-sm text-gray-200 placeholder-gray-600 outline-none focus:ring-0 w-full"
-            placeholder="ghp_••••••••••••••••••••••••••••••••••••••"
-            value={githubToken}
-            onChange={(e) => setGithubToken(e.target.value)}
-          />
-        </div>
-
-        {/* Error log */}
-        <div className="relative rounded-xl border border-white/10 bg-[#17171a] shadow-2xl ring-1 ring-white/5 focus-within:border-violet-500/60 focus-within:ring-violet-500/20 transition-all duration-200">
           <textarea
-            className="w-full resize-none bg-transparent px-5 pt-5 pb-14 text-sm text-gray-200 placeholder-gray-600 outline-none leading-relaxed"
             rows={10}
             spellCheck={false}
-            placeholder={"Paste error log here...\n\nTypeError: Cannot read properties of undefined (reading 'map')\n    at ProductList (src/components/ProductList.jsx:12:23)"}
-            value={log}
-            onChange={(e) => setLog(e.target.value)}
+            className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm font-mono placeholder-slate-400 outline-none focus:border-cyan-400 transition-colors resize-none leading-relaxed"
+            placeholder="Paste raw CI/CD error log…"
+            value={errorLog}
+            onChange={e => setErrorLog(e.target.value)}
           />
+          {error && <p className="text-xs text-red-500 font-mono">{error}</p>}
+          <button
+            type="submit"
+            disabled={loading || !errorLog.trim()}
+            className="w-full bg-gradient-to-r from-cyan-400 to-purple-500 hover:from-cyan-500 hover:to-purple-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold uppercase tracking-widest text-sm rounded-lg py-3 flex items-center justify-center gap-2 transition-all"
+          >
+            {loading && (
+              <span className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+            )}
+            {loading ? 'Analyzing…' : 'Debug with AI'}
+          </button>
+        </form>
 
-          {/* Toolbar row */}
-          <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-4 py-3 border-t border-white/5">
-            <span className="text-xs text-gray-600 select-none">
-              {log.length > 0 ? `${log.length} chars` : 'error log'}
-            </span>
-            <button
-              type="submit"
-              disabled={loading || !log.trim()}
-              className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {loading ? (
-                <>
-                  <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                  Analyzing…
-                </>
-              ) : (
-                <>
-                  <svg
-                    className="h-3.5 w-3.5"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                  >
-                    <path d="M2 8h12M10 4l4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  Debug with AI
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      </form>
-
-      {/* Result card */}
-      {result && (
-        <div className="w-full max-w-2xl mt-6 rounded-xl border border-white/10 bg-[#17171a] shadow-2xl ring-1 ring-white/5 overflow-hidden">
-          {/* Card header */}
-          <div className="flex items-center gap-2 px-5 py-3 border-b border-white/5 bg-[#1c1c1f]">
-            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-xs font-medium text-emerald-400 uppercase tracking-widest">
-              Fix Ready
-            </span>
-          </div>
-
-          <div className="px-5 py-5 space-y-5">
-            {/* File path */}
-            <div>
-              <p className="text-[11px] uppercase tracking-widest text-gray-500 mb-1">
-                Location
-              </p>
-              <code className="text-sm text-violet-300 bg-violet-500/10 px-2.5 py-1 rounded-md inline-block">
-                {result.filePath}
-              </code>
-            </div>
-
-            {/* Root cause */}
-            <div>
-              <p className="text-[11px] uppercase tracking-widest text-gray-500 mb-1">
-                Root Cause
-              </p>
-              <p className="text-sm text-gray-300 leading-relaxed">
-                {result.rootCause}
-              </p>
-            </div>
-
-            {/* Code fix */}
-            <div>
-              <p className="text-[11px] uppercase tracking-widest text-gray-500 mb-1">
-                Suggested Fix
-              </p>
-              <div className="relative rounded-lg bg-[#0d0d0f] border border-white/5 overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-[#111113]">
-                  <span className="text-[11px] text-gray-600">javascript</span>
-                  <button
-                    type="button"
-                    className="text-[11px] text-gray-500 hover:text-gray-300 transition-colors"
-                    onClick={() => navigator.clipboard?.writeText(result.fix)}
-                  >
-                    Copy
-                  </button>
+        {result && (
+          <section className="grid grid-cols-3 gap-4">
+            {[
+              { label: 'Location',      value: result.location      ?? result.filePath  ?? '—' },
+              { label: 'Root Cause',    value: result.rootCause     ?? result.cause     ?? '—' },
+              { label: 'Suggested Fix', value: result.suggestedFix  ?? result.fix       ?? '—' },
+            ].map(({ label, value }) => (
+              <div key={label} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                <div className="px-4 py-3 border-b border-slate-100">
+                  <p className="text-xs font-semibold uppercase tracking-widest bg-gradient-to-r from-cyan-500 to-purple-500 bg-clip-text text-transparent">
+                    {label}
+                  </p>
                 </div>
-                <pre className="overflow-x-auto px-4 py-4 text-sm text-gray-300 leading-relaxed whitespace-pre">
-                  <code>{result.fix}</code>
-                </pre>
+                <div className="bg-slate-900 m-3 rounded-lg p-3">
+                  <pre className="text-xs text-slate-200 font-mono whitespace-pre-wrap break-words leading-relaxed">
+                    {value}
+                  </pre>
+                </div>
               </div>
+            ))}
+          </section>
+        )}
+
+        <section>
+          <h2 className="text-xs uppercase tracking-widest text-slate-400 mb-3">History</h2>
+          {!historyReady ? (
+            <p className="text-sm text-slate-400">Loading…</p>
+          ) : history.length === 0 ? (
+            <p className="text-sm text-slate-400">No sessions recorded.</p>
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    <th className="text-left px-5 py-3 text-xs uppercase tracking-widest text-slate-400 font-normal">Repository</th>
+                    <th className="text-left px-5 py-3 text-xs uppercase tracking-widest text-slate-400 font-normal">Cause</th>
+                    <th className="text-right px-5 py-3 text-xs uppercase tracking-widest text-slate-400 font-normal">Date</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {history.map(entry => (
+                    <tr key={entry._id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-5 py-3 font-mono text-xs text-slate-500 whitespace-nowrap">{entry.repository || '—'}</td>
+                      <td className="px-5 py-3 text-slate-700 max-w-xs truncate">{entry.rootCause || '—'}</td>
+                      <td className="px-5 py-3 text-right text-xs text-slate-400 whitespace-nowrap">{fmt_date(entry.createdAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </div>
-        </div>
-      )}
+          )}
+        </section>
+
+      </main>
     </div>
   )
 }
