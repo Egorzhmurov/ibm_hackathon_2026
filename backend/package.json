@@ -1,0 +1,30 @@
+{
+  "name": "ibm_hackathon_2026",
+  "version": "1.0.0",
+  "description": "We are a team from Ukraine. We joined the IBM Bob 2.0 Hackathon to challenge ourselves, gain new knowledge in frontend and web development, and explore how AI can optimize modern developer workflows. Our primary goal for this hackathon is to build a highly functional, user-centric application while getting hands-on experience with IBM Bob IDE's advanced capabilities.",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon index.js",
+    "start": "node index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Egorzhmurov/ibm_hackathon_2026.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Egorzhmurov/ibm_hackathon_2026/issues"
+  },
+  "homepage": "https://github.com/Egorzhmurov/ibm_hackathon_2026#readme",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.4",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
