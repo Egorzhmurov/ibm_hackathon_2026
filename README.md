@@ -63,4 +63,4 @@ The application will be available at `http://localhost:5173`.
 5. Click **Debug with AI** to instantly view the error location, root cause, and the suggested code fix.
 
 ## Author
-* **Yegor Zhmurov**
+* **Yehor Zhmurov**
