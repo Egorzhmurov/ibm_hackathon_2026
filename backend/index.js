@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { lookup: kbLookup } = require('./modules/kb');
 const app = express();
 
 if (!process.env.GEMINI_API_KEY) {
@@ -50,6 +51,16 @@ app.post('/api/debug', async (req, res) => {
     ? `\n\nThe relevant source file is \`${filePath}\`:\n\`\`\`\n${rawCode}\n\`\`\``
     : '';
 
+  // Knowledge-base pre-flight: enrich the prompt with a local KB match if one exists.
+  // This is completely non-blocking — if lookup returns null the block is simply omitted.
+  const kbHit = kbLookup(rawLog);
+  const kbBlock = kbHit
+    ? `\n\nLocal knowledge base matched the pattern "${kbHit.title}":\n` +
+      `- Known root cause: ${kbHit.rootCause}\n` +
+      `- Reference: ${kbHit.ref}\n` +
+      `Use this as supporting context only — derive your answer from the actual log above.`
+    : '';
+
   // Strict schema example shown inline so the model can follow it exactly.
   const prompt = `You are a senior software engineer and expert debugger.
 A CI/CD pipeline produced the following error log:
@@ -58,6 +69,7 @@ A CI/CD pipeline produced the following error log:
 ${rawLog}
 \`\`\`
 ${sourceBlock}
+${kbBlock}
 Produce a precise, actionable bug report following ALL of these rules:
 
 1. Identify the single root cause — explain WHY it fails, not just WHAT failed.
