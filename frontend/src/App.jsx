@@ -1,47 +1,27 @@
 import { useState } from 'react'
 
-const PLACEHOLDER_RESULT = {
-  filePath: 'src/server/routes/auth.js:47',
-  rootCause:
-    'jwt.verify() is called before the token variable is declared, so `token` is always `undefined` at the point of verification — this throws a synchronous ReferenceError that bypasses the async error handler.',
-  steps: [
-    'Move the token extraction line above the jwt.verify() call.',
-    'Add an early-return guard so a missing token returns 401 instead of throwing.',
-    'Ensure jwt.verify() is wrapped in try/catch to handle expired or invalid tokens gracefully.',
-  ],
-  before: `router.post('/verify', (req, res) => {
-  const verified = jwt.verify(token, process.env.JWT_SECRET); // ❌ token not yet defined
-  const token = req.headers.authorization?.split(' ')[1];
-  res.json({ verified });
-});`,
-  after: `router.post('/verify', (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1]; // ✅ extract first
-  if (!token) return res.status(401).json({ error: 'No token provided' });
-  try {
-    const verified = jwt.verify(token, process.env.JWT_SECRET);
-    res.json({ verified });
-  } catch {
-    res.status(401).json({ error: 'Invalid or expired token' });
-  }
-});`,
-}
-
 export default function App() {
   const [log, setLog] = useState('')
   const [repo, setRepo] = useState('')
   const [githubToken, setGithubToken] = useState('')
   const [result, setResult] = useState(null)
+  const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e) {
     e.preventDefault()
     if (!log.trim()) return
-    setLoading(true)
+
+    // Clear all previous output before every new request
     setResult(null)
+    setError(null)
+    setLoading(true)
+
     try {
-      const body = { log }
+      const body = { log: log.trim() }
       if (repo.trim()) body.repository = repo.trim()
       if (githubToken.trim()) body.githubToken = githubToken.trim()
+
       const res = await fetch('/api/debug', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -50,8 +30,12 @@ export default function App() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
       setResult(data)
-    } catch {
-      setResult(PLACEHOLDER_RESULT)
+    } catch (err) {
+      setError(
+        err instanceof TypeError
+          ? 'Cannot reach the backend. Make sure the server is running on port 5000.'
+          : err.message
+      )
     } finally {
       setLoading(false)
     }
@@ -147,6 +131,17 @@ export default function App() {
           </div>
         </div>
       </form>
+
+      {/* Error banner */}
+      {error && (
+        <div className="w-full max-w-2xl mt-6 rounded-xl border border-red-500/30 bg-red-500/10 px-5 py-4 flex items-start gap-3">
+          <svg className="h-4 w-4 text-red-400 flex-shrink-0 mt-0.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <circle cx="8" cy="8" r="6" />
+            <path d="M8 5v3M8 10.5v.5" strokeLinecap="round" />
+          </svg>
+          <p className="text-sm text-red-300 leading-relaxed">{error}</p>
+        </div>
+      )}
 
       {/* Result card */}
       {result && (
