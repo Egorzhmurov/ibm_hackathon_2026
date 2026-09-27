@@ -111,6 +111,10 @@ Every field is required. Use JSON null (not the string "null") when filePath can
     steps:     Array.isArray(aiResult.steps) ? aiResult.steps : [],
     before:    aiResult.before ?? '',
     after:     aiResult.after  ?? '',
+    // KB supplement: present only when a local pattern matched.
+    kbTitle:   kbHit ? kbHit.title    : null,
+    kbRef:     kbHit ? kbHit.ref      : null,
+    kbFix:     kbHit ? kbHit.fix      : null,
   });
 });
 

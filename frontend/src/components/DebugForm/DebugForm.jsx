@@ -15,6 +15,7 @@ export default function DebugForm({ onResult, onError, onLoadingChange }) {
   const [log, setLog]               = useState('')
   const [repo, setRepo]             = useState('')
   const [githubToken, setGithubToken] = useState('')
+  const [showToken, setShowToken]   = useState(false)
   const [loading, setLoading]       = useState(false)
 
   function setLoadingState(val) {
@@ -73,15 +74,28 @@ export default function DebugForm({ onResult, onError, onLoadingChange }) {
 
       {/* GitHub Token */}
       <div className="rounded-xl border border-white/10 bg-[#17171a] shadow-xl ring-1 ring-white/5 px-5 py-3 flex flex-col gap-1">
-        <label className="text-[11px] uppercase tracking-widest text-gray-500">
-          GitHub Token{' '}
-          <span className="normal-case tracking-normal text-gray-600">
-            (optional, for private repos)
-          </span>
-        </label>
+        <div className="flex items-center justify-between">
+          <label className="text-[11px] uppercase tracking-widest text-gray-500">
+            GitHub Token{' '}
+            <span className="normal-case tracking-normal text-gray-600">
+              (optional, for private repos)
+            </span>
+          </label>
+          {githubToken && (
+            <button
+              type="button"
+              onClick={() => setShowToken(v => !v)}
+              className="text-[11px] text-gray-600 hover:text-gray-400 transition-colors select-none"
+              aria-label={showToken ? 'Hide token' : 'Show token'}
+            >
+              {showToken ? 'Hide' : 'Show'}
+            </button>
+          )}
+        </div>
         <input
-          type="password"
+          type={showToken ? 'text' : 'password'}
           autoComplete="off"
+          spellCheck={false}
           className="bg-transparent text-sm text-gray-200 placeholder-gray-600 outline-none focus:ring-0 w-full"
           placeholder="ghp_••••••••••••••••••••••••••••••••••••••"
           value={githubToken}
