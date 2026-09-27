@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import Header      from './components/Header/Header'
-import DebugForm   from './components/DebugForm/DebugForm'
-import ErrorBanner from './components/ErrorBanner/ErrorBanner'
-import ResultCard  from './components/ResultCard/ResultCard'
+import Header          from './components/Header/Header'
+import DebugForm       from './components/DebugForm/DebugForm'
+import ErrorBanner     from './components/ErrorBanner/ErrorBanner'
+import ResultCard      from './components/ResultCard/ResultCard'
+import KbFallbackCard  from './components/KbFallbackCard/KbFallbackCard'
 
 export default function App() {
   const [result, setResult]   = useState(null)
@@ -25,7 +26,8 @@ export default function App() {
 
       <ErrorBanner message={error} />
 
-      {!loading && <ResultCard result={result} />}
+      {!loading && result?.source === 'ai' && <ResultCard result={result} />}
+      {!loading && result?.source === 'kb' && <KbFallbackCard result={result} />}
 
     </div>
   )

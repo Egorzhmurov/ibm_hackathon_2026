@@ -96,8 +96,23 @@ Every field is required. Use JSON null (not the string "null") when filePath can
     const jsonStr = raw.slice(start, end + 1);
     aiResult = JSON.parse(jsonStr);
   } catch (err) {
-    console.error('[/api/debug] parse error:', err.message);
+    console.error('[/api/debug] AI error:', err.message);
     console.error('[/api/debug] raw model text:', typeof raw !== 'undefined' ? JSON.stringify(raw) : '(no response)');
+
+    // If the AI failed but we have a local KB match, return it as a structured
+    // fallback (HTTP 200, source:'kb') so the frontend can show the docs panel
+    // rather than a generic error banner.
+    if (kbHit) {
+      return res.json({
+        source:    'kb',
+        filePath:  filePath ?? null,
+        kbTitle:   kbHit.title,
+        kbRef:     kbHit.ref,
+        kbFix:     kbHit.fix,
+        rootCause: kbHit.rootCause,
+      });
+    }
+
     return res.status(502).json({ error: `AI response parse failed: ${err.message}` });
   }
 
@@ -106,15 +121,16 @@ Every field is required. Use JSON null (not the string "null") when filePath can
     aiResult.filePath && aiResult.filePath !== 'null' ? aiResult.filePath : filePath;
 
   return res.json({
+    source:    'ai',
     filePath:  resolvedFilePath  ?? null,
     rootCause: aiResult.rootCause ?? '',
     steps:     Array.isArray(aiResult.steps) ? aiResult.steps : [],
     before:    aiResult.before ?? '',
     after:     aiResult.after  ?? '',
     // KB supplement: present only when a local pattern matched.
-    kbTitle:   kbHit ? kbHit.title    : null,
-    kbRef:     kbHit ? kbHit.ref      : null,
-    kbFix:     kbHit ? kbHit.fix      : null,
+    kbTitle:   kbHit ? kbHit.title : null,
+    kbRef:     kbHit ? kbHit.ref   : null,
+    kbFix:     kbHit ? kbHit.fix   : null,
   });
 });
 
