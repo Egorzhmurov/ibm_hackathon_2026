@@ -6,17 +6,17 @@ We are a team from Ukraine. We joined the IBM Bob 2.0 Hackathon to challenge our
 
 # AI Debug: CI/CD Pipeline Analyzer
 
-A Warp-inspired AI debugging utility designed to automatically diagnose and fix failing CI/CD pipelines. The tool parses raw error logs, fetches the failing code directly from GitHub, and uses Google Gemini 3.8 Flash to generate a structured root cause analysis along with a ready-to-use code fix.
+A Warp-inspired AI debugging utility designed to automatically diagnose and fix failing CI/CD pipelines. The tool parses raw error logs, looks up matching causes in the local `backend/knowledge/common_errors.md` reference, fetches failing code from GitHub when configured, and uses OpenRouter (OpenAI GPT-4o) to generate a structured root cause analysis and code fix. The local documentation lookup runs independently from the AI request and displays its highest-ranked matches as soon as they are available.
 
 ## Tech Stack
 * **Frontend:** React (Vite), Tailwind CSS
 * **Backend:** Node.js, Express
-* **AI Engine:** Google Gemini 3.8 Flash (@google/generative-ai)
+* **AI Engine:** OpenRouter Chat Completions API (`openai/gpt-4o`)
 * **Integrations:** GitHub REST API
 
 ## Prerequisites
-* [Node.js](https://nodejs.org/) (v18+)
-* A [Google Gemini API Key](https://aistudio.google.com/)
+* [Node.js](https://nodejs.org/) (v20+)
+* An [OpenRouter API key](https://openrouter.ai/keys)
 * A GitHub Personal Access Token (PAT) for analyzing private repositories (optional)
 
 ## Local Setup
@@ -28,13 +28,19 @@ cd backend
 npm install
 ```
 
-Set up your environment variables by copying the example file:
-```bash
-cp .env.example .env
+Create an API key in the [OpenRouter dashboard](https://openrouter.ai/keys), then create a `.env` file in the `backend` directory:
+
+```env
+OPENROUTER_API_KEY=your_openrouter_key_here
 ```
 
-Open the newly created `.env` file and insert your actual Gemini API key:
-`GEMINI_API_KEY=your_actual_key_here`
+Keep this key private: do not commit it or expose it in frontend code. The backend reads it from `backend/.env` and uses it to authenticate requests to the OpenRouter Chat Completions API. The configured model is `openai/gpt-4o`.
+
+Optionally, add your site's URL for OpenRouter attribution:
+
+```env
+OPENROUTER_HTTP_REFERER=https://your-site.example
+```
 
 Start the Express server:
 ```bash
@@ -60,7 +66,9 @@ The application will be available at `http://localhost:5173`.
 2. Enter the target GitHub repository (e.g., `owner/repo`).
 3. (Optional) Provide a GitHub token if the repository is private.
 4. Paste the raw CI/CD error log into the command-palette input.
-5. Click **Debug with AI** to instantly view the error location, root cause, and the suggested code fix.
+5. Click **Debug with AI** to see matching local documentation causes alongside the OpenRouter analysis, error location, and suggested code fix.
+
+The local lookup reads `backend/knowledge/common_errors.md` at backend startup, matches each entry's `Pattern` keywords against the submitted log, and ranks the results by keyword occurrence count. Run the backend tests with `npm test` from the `backend` directory.
 
 ## Author
 * **Yehor Zhmurov**

@@ -3,11 +3,14 @@ import Header          from './components/Header/Header'
 import DebugForm       from './components/DebugForm/DebugForm'
 import ErrorBanner     from './components/ErrorBanner/ErrorBanner'
 import ResultCard      from './components/ResultCard/ResultCard'
-import KbFallbackCard  from './components/KbFallbackCard/KbFallbackCard'
+import KnowledgeBaseCard from './components/KnowledgeBaseCard/KnowledgeBaseCard'
 
 export default function App() {
   const [result, setResult]   = useState(null)
   const [error, setError]     = useState(null)
+  const [kbMatches, setKbMatches] = useState([])
+  const [kbStatus, setKbStatus] = useState('idle')
+  const [kbError, setKbError] = useState(null)
   // loading is owned by DebugForm; we track it here only to prevent
   // the result card from flashing the previous result while a new
   // request is in flight.
@@ -22,12 +25,15 @@ export default function App() {
         onResult={setResult}
         onError={setError}
         onLoadingChange={setLoading}
+        onKbResults={setKbMatches}
+        onKbStatusChange={setKbStatus}
+        onKbError={setKbError}
       />
 
       <ErrorBanner message={error} />
 
-      {!loading && result?.source === 'ai' && <ResultCard result={result} />}
-      {!loading && result?.source === 'kb' && <KbFallbackCard result={result} />}
+      <KnowledgeBaseCard matches={kbMatches} status={kbStatus} error={kbError} />
+      {!loading && result && <ResultCard result={result} />}
 
     </div>
   )

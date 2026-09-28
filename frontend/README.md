@@ -7,17 +7,17 @@ We are a team from Ukraine. We joined the IBM Bob 2.0 Hackathon to challenge our
 
 # AI Debug: CI/CD Pipeline Analyzer
 
-A Warp-inspired AI debugging utility designed to automatically diagnose and fix failing CI/CD pipelines. The tool parses raw error logs, fetches the failing code directly from GitHub, and uses Google Gemini 3.8 Flash to generate a structured root cause analysis along with a ready-to-use code fix.
+A Warp-inspired AI debugging utility designed to automatically diagnose and fix failing CI/CD pipelines. The tool parses raw error logs, fetches the failing code directly from GitHub, and uses OpenRouter (OpenAI GPT-4o) to generate a structured root cause analysis along with a ready-to-use code fix.
 
 ## Tech Stack
 * **Frontend:** React (Vite), Tailwind CSS
 * **Backend:** Node.js, Express
-* **AI Engine:** Google Gemini 3.8 Flash (@google/generative-ai)
+* **AI Engine:** OpenRouter Chat Completions API (`openai/gpt-4o`)
 * **Integrations:** GitHub REST API
 
 ## Prerequisites
-* [Node.js](https://nodejs.org/) (v18+)
-* A [Google Gemini API Key](https://aistudio.google.com/)
+* [Node.js](https://nodejs.org/) (v20+)
+* An [OpenRouter API key](https://openrouter.ai/keys)
 * A GitHub Personal Access Token (PAT) for analyzing private repositories (optional)
 
 ## Local Setup
@@ -29,13 +29,10 @@ cd backend
 npm install
 ```
 
-Set up your environment variables by copying the example file:
-```bash
-cp .env.example .env
-```
+Create a `.env` file in `backend` and add your OpenRouter API key:
+`OPENROUTER_API_KEY=your_openrouter_key_here`
 
-Open the newly created `.env` file and insert your actual Gemini API key:
-`GEMINI_API_KEY=your_actual_key_here`
+Optionally set `OPENROUTER_HTTP_REFERER` to your site's URL for OpenRouter attribution.
 
 Start the Express server:
 ```bash
@@ -61,7 +58,7 @@ The application will be available at `http://localhost:5173`.
 2. Enter the target GitHub repository (e.g., `owner/repo`).
 3. (Optional) Provide a GitHub token if the repository is private.
 4. Paste the raw CI/CD error log into the command-palette input.
-5. Click **Debug with AI** to instantly view the error location, root cause, and the suggested code fix.
+5. Click **Debug with AI** to instantly view the error location, root cause, and the suggested code fix from OpenRouter.
 
 ## Author
 * **Yegor Zhmurov**

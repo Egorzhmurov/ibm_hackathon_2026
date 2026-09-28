@@ -1,35 +1,64 @@
-require('dotenv').config();
+const path = require('node:path');
+const fs = require('node:fs');
+const dotenv = require('dotenv');
+const envPath = path.join(__dirname, '.env');
+const envEncoding =
+  fs.existsSync(envPath) &&
+  fs.readFileSync(envPath).subarray(0, 2).equals(Buffer.from([0xff, 0xfe]))
+    ? 'utf16le'
+    : 'utf8';
+const envConfig = dotenv.config({ path: envPath, encoding: envEncoding });
+if (
+  !process.env.OPENROUTER_API_KEY?.trim() &&
+  envConfig.parsed?.OPENROUTER_API_KEY?.trim()
+) {
+  process.env.OPENROUTER_API_KEY = envConfig.parsed.OPENROUTER_API_KEY.trim();
+}
 const express = require('express');
 const cors = require('cors');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { lookup: kbLookup } = require('./modules/kb');
+const { lookupAll: kbLookupAll } = require('./modules/kb');
 const app = express();
+const openRouterApiKey = process.env.OPENROUTER_API_KEY?.trim();
 
-if (!process.env.GEMINI_API_KEY) {
-  console.error('[FATAL] GEMINI_API_KEY is not set in .env — all /api/debug requests will fail.');
+if (!openRouterApiKey) {
+  console.error('[FATAL] OPENROUTER_API_KEY is not set in .env — all /api/debug requests will fail.');
 }
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const OPENROUTER_MODEL = 'openai/gpt-4o';
 const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 app.get('/', (req, res) => res.json({ message: 'Backend is running!' }));
 
-app.post('/api/debug', async (req, res) => {
-  const { log, errorLog, repository, githubToken } = req.body;
-  const rawLog = log || errorLog;
+app.post('/api/knowledge-base/lookup', (req, res) => {
+  const log = req.body?.log;
 
-  if (!rawLog || !rawLog.trim()) {
+  if (typeof log !== 'string' || !log.trim()) {
     return res.status(400).json({ error: 'Error log is required.' });
   }
 
+  return res.json({ matches: kbLookupAll(log) });
+});
+
+app.post('/api/debug', async (req, res) => {
+  const { log, errorLog, repository, githubToken } = req.body || {};
+  const rawLog = typeof log === 'string' ? log : errorLog;
+
+  if (typeof rawLog !== 'string' || !rawLog.trim()) {
+    return res.status(400).json({ error: 'Error log is required.' });
+  }
+
+  if (!openRouterApiKey) {
+    return res.status(503).json({ error: 'OpenRouter API is unavailable because OPENROUTER_API_KEY is not configured.' });
+  }
+
   const stackMatch = rawLog.match(/\(([^)]+\.(?:js|ts|jsx|tsx|py|rb|java|go)):\d+:\d+\)/);
-  const filePath = stackMatch ? stackMatch[1] : null;
+  const sourceFilePath = stackMatch ? stackMatch[1] : null;
 
   let rawCode = null;
 
-  if (repository && filePath) {
+  if (repository && sourceFilePath) {
     const headers = {
       'Accept': 'application/vnd.github.v3.raw',
       'User-Agent': 'Node.js',
@@ -38,7 +67,7 @@ app.post('/api/debug', async (req, res) => {
 
     try {
       const ghRes = await fetch(
-        `https://api.github.com/repos/${repository}/contents/${filePath}`,
+        `https://api.github.com/repos/${repository}/contents/${sourceFilePath}`,
         { headers }
       );
       if (ghRes.ok) rawCode = await ghRes.text();
@@ -48,89 +77,90 @@ app.post('/api/debug', async (req, res) => {
   }
 
   const sourceBlock = rawCode
-    ? `\n\nThe relevant source file is \`${filePath}\`:\n\`\`\`\n${rawCode}\n\`\`\``
+    ? `\n\nThe relevant source file is \`${sourceFilePath}\`:\n\`\`\`\n${rawCode}\n\`\`\``
     : '';
 
-  // Knowledge-base pre-flight: enrich the prompt with a local KB match if one exists.
-  // This is completely non-blocking — if lookup returns null the block is simply omitted.
-  const kbHit = kbLookup(rawLog);
-  const kbBlock = kbHit
-    ? `\n\nLocal knowledge base matched the pattern "${kbHit.title}":\n` +
-      `- Known root cause: ${kbHit.rootCause}\n` +
-      `- Reference: ${kbHit.ref}\n` +
-      `Use this as supporting context only — derive your answer from the actual log above.`
-    : '';
-
-  // Strict schema example shown inline so the model can follow it exactly.
-  const prompt = `You are a senior software engineer and expert debugger.
-A CI/CD pipeline produced the following error log:
+  const prompt = `A CI/CD pipeline produced the following error log:
 
 \`\`\`
 ${rawLog}
 \`\`\`
 ${sourceBlock}
-${kbBlock}
-Produce a precise, actionable bug report following ALL of these rules:
 
+Produce a precise, actionable bug report following ALL of these rules:
 1. Identify the single root cause — explain WHY it fails, not just WHAT failed.
 2. List every fix step a developer must take, in order.
 3. Show ONLY the changed lines (plus up to 2 lines of surrounding context) as "before" and "after" snippets.
-4. In "before" and "after" values use \\n (two characters: backslash + n) for every newline — do NOT use real newlines inside a JSON string value.
+4. In "location", give the exact file path and line number from the log or source (for example "src/server/routes/auth.js:47"). If it cannot be determined, use "Unknown location".
+5. Return ONLY a valid JSON object with exactly these fields and types:
+   - "location": string
+   - "root_cause": string
+   - "how_to_fix": array of strings
+   - "code_change": object with string fields "before" and "after"
+6. Use empty strings for both code_change values when no code change applies. Escape snippet newlines as JSON requires. Do not include markdown fences or any text outside the JSON object.
 
-CRITICAL: output ONLY the JSON object below — no markdown fences, no prose, nothing else.
-Every field is required. Use JSON null (not the string "null") when filePath cannot be determined.
-
-{"filePath":"<file:line from stack trace, or JSON null>","rootCause":"<one sentence: what is wrong and WHY>","steps":["<step 1>","<step 2>"],"before":"<broken code — escape newlines as \\\\n>","after":"<fixed code — escape newlines as \\\\n>"}`;
+Required response shape:
+{"location":"Unknown location","root_cause":"Concise technical explanation","how_to_fix":["Actionable step"],"code_change":{"before":"","after":""}}`;
 
   let aiResult;
   try {
-    const aiRes = await model.generateContent(prompt);
-    const raw = aiRes.response.text();
+    const openRouterResponse = await fetch(OPENROUTER_API_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${openRouterApiKey}`,
+        'Content-Type': 'application/json',
+        'X-Title': 'AI Debug: CI/CD Pipeline Analyzer',
+        ...(process.env.OPENROUTER_HTTP_REFERER
+          ? { 'HTTP-Referer': process.env.OPENROUTER_HTTP_REFERER }
+          : {}),
+      },
+      body: JSON.stringify({
+        model: OPENROUTER_MODEL,
+        messages: [
+          { role: 'system', content: 'You are a senior software engineer and expert debugger.' },
+          { role: 'user', content: prompt },
+        ],
+        response_format: { type: 'json_object' },
+      }),
+    });
 
-    // Extract the outermost JSON object — immune to any prose or fences the model wraps around it.
-    const start = raw.indexOf('{');
-    const end   = raw.lastIndexOf('}');
-    if (start === -1 || end === -1 || end <= start) {
-      throw new Error('No JSON object found in model response');
+    const completion = await openRouterResponse.json();
+    if (!openRouterResponse.ok) {
+      const details = completion?.error?.message || `HTTP ${openRouterResponse.status}`;
+      throw new Error(`OpenRouter request failed: ${details}`);
     }
-    const jsonStr = raw.slice(start, end + 1);
-    aiResult = JSON.parse(jsonStr);
+
+    const content = completion?.choices?.[0]?.message?.content;
+    if (typeof content !== 'string') {
+      throw new Error('OpenRouter returned no message content.');
+    }
+    aiResult = JSON.parse(content);
+    if (
+      !aiResult ||
+      typeof aiResult.location !== 'string' ||
+      typeof aiResult.root_cause !== 'string' ||
+      !Array.isArray(aiResult.how_to_fix) ||
+      !aiResult.how_to_fix.every((step) => typeof step === 'string') ||
+      !aiResult.code_change ||
+      typeof aiResult.code_change.before !== 'string' ||
+      typeof aiResult.code_change.after !== 'string'
+    ) {
+      throw new Error('OpenRouter returned an invalid debugging response.');
+    }
   } catch (err) {
-    console.error('[/api/debug] AI error:', err.message);
-    console.error('[/api/debug] raw model text:', typeof raw !== 'undefined' ? JSON.stringify(raw) : '(no response)');
-
-    // If the AI failed but we have a local KB match, return it as a structured
-    // fallback (HTTP 200, source:'kb') so the frontend can show the docs panel
-    // rather than a generic error banner.
-    if (kbHit) {
-      return res.json({
-        source:    'kb',
-        filePath:  filePath ?? null,
-        kbTitle:   kbHit.title,
-        kbRef:     kbHit.ref,
-        kbFix:     kbHit.fix,
-        rootCause: kbHit.rootCause,
-      });
-    }
-
-    return res.status(502).json({ error: `AI response parse failed: ${err.message}` });
+    const message = err instanceof Error ? err.message : 'Unknown OpenRouter API error';
+    console.error('[/api/debug] OpenRouter request failed:', message);
+    return res.status(502).json({ error: `OpenRouter analysis failed: ${message}` });
   }
 
-  // Normalise: the model sometimes returns the string "null" instead of JSON null.
-  const resolvedFilePath =
-    aiResult.filePath && aiResult.filePath !== 'null' ? aiResult.filePath : filePath;
-
   return res.json({
-    source:    'ai',
-    filePath:  resolvedFilePath  ?? null,
-    rootCause: aiResult.rootCause ?? '',
-    steps:     Array.isArray(aiResult.steps) ? aiResult.steps : [],
-    before:    aiResult.before ?? '',
-    after:     aiResult.after  ?? '',
-    // KB supplement: present only when a local pattern matched.
-    kbTitle:   kbHit ? kbHit.title : null,
-    kbRef:     kbHit ? kbHit.ref   : null,
-    kbFix:     kbHit ? kbHit.fix   : null,
+    location: aiResult.location || 'Unknown location',
+    root_cause: aiResult.root_cause,
+    how_to_fix: aiResult.how_to_fix,
+    code_change: {
+      before: aiResult.code_change.before,
+      after: aiResult.code_change.after,
+    },
   });
 });
 

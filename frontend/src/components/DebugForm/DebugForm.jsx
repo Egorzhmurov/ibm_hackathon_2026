@@ -11,7 +11,14 @@ import { useState } from 'react'
  *   onError        {(message: string) => void}
  *   onLoadingChange {(loading: boolean) => void}
  */
-export default function DebugForm({ onResult, onError, onLoadingChange }) {
+export default function DebugForm({
+  onResult,
+  onError,
+  onLoadingChange,
+  onKbResults,
+  onKbStatusChange,
+  onKbError,
+}) {
   const [log, setLog]               = useState('')
   const [repo, setRepo]             = useState('')
   const [githubToken, setGithubToken] = useState('')
@@ -29,7 +36,33 @@ export default function DebugForm({ onResult, onError, onLoadingChange }) {
 
     onResult(null)
     onError(null)
+    onKbResults([])
+    onKbError(null)
+    onKbStatusChange('loading')
     setLoadingState(true)
+
+    fetch('/api/knowledge-base/lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ log: log.trim() }),
+    })
+      .then(async (res) => {
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+        if (!Array.isArray(data.matches)) {
+          throw new Error('The local documentation lookup returned an invalid response.')
+        }
+        onKbResults(data.matches)
+        onKbStatusChange('success')
+      })
+      .catch((err) => {
+        onKbError(
+          err instanceof TypeError
+            ? 'Cannot reach the backend for local documentation lookup.'
+            : err.message
+        )
+        onKbStatusChange('error')
+      })
 
     try {
       const body = { log: log.trim() }
@@ -48,7 +81,9 @@ export default function DebugForm({ onResult, onError, onLoadingChange }) {
       onError(
         err instanceof TypeError
           ? 'Cannot reach the backend. Make sure the server is running on port 5000.'
-          : err.message
+          : err instanceof Error
+            ? err.message
+            : String(err)
       )
     } finally {
       setLoadingState(false)
